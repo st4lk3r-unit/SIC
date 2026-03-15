@@ -1,12 +1,18 @@
 #include "sic/sic.h"
 #include <stdlib.h>
 #include "sic/sic_registry.h"
+#include "sic/input/kscan.h"
 #include "sic/power/switch.h"
 #include "sic/power/charger.h"
 #include "sic/audio/mic.h"
 #include "sic/audio/amp.h"
 #include "sic/storage/sd.h"
 #include "sic/ir/ir_tx.h"
+
+static int  kbd_rk (const void* self){ (void)self; return -1; }
+static int  kbd_rb (const struct kscan_s* self, unsigned long long* out){ (void)self; *out=0; return 0; }
+static const struct kscan_vtbl_s KBDVT = { kbd_rk, kbd_rb };
+static kscan_t KBD = { &KBDVT, NULL, NULL };
 
 static void sw_set(const void* self, int on){ (void)self;(void)on; }
 static int  sw_pg (const void* self){ (void)self; return 1; }
@@ -34,7 +40,7 @@ static sd_t SD = {0};
 
 static int probe_dummy(const void* ic, void** out){
   (void)ic;
-  *out = &SW;  sic_registry_add(SIC_F_PWR_SW,"sy7088",&SW);
+  *out = &KBD;  sic_registry_add(SIC_F_PWR_SW,"sy7088",&SW);
   sic_registry_add(SIC_F_AMP,"ns4168",&AMP);
   sic_registry_add(SIC_F_MIC,"mic_pdm",&MIC);
   sic_registry_add(SIC_F_CHARGER,"tp4057",&CHG);

@@ -88,7 +88,7 @@ static inline int is_pressed(int v){
 #endif
 }
 
-int kscan_read_bitmap(const struct kscan_s* self, unsigned long long* out_bitmap){
+static int read_bitmap_impl(const struct kscan_s* self, unsigned long long* out_bitmap){
   (void)self;
   if (!out_bitmap) return -1;
   unsigned long long bm = 0ULL;
@@ -148,9 +148,12 @@ static int read_key_impl(const void* self_void){
   // Legacy single-key read not used in HAL; return -1 to avoid double-read
   return -1;
 }
-static const struct kscan_vtbl_s VT = { .read_key = read_key_impl };
+static const struct kscan_vtbl_s VT = {
+    .read_key    = read_key_impl,
+    .read_bitmap = read_bitmap_impl
+};
 
-static const struct kscan_s* make(void){
+static const struct kscan_s* make(const sic_kscan_cfg_t* cfg){
   if (KBD_SEL0==0xFF || KBD_SEL1==0xFF || KBD_SEL2==0xFF) return NULL;
   sic_gpio_mode(KBD_SEL0, 1);
   sic_gpio_mode(KBD_SEL1, 1);
@@ -160,17 +163,20 @@ static const struct kscan_s* make(void){
 #if (KBD_PULL==UP)
   for (int i=0;i<8;i++){ if (ins[i]!=0xFF){ sic_gpio_mode_pullup(ins[i]); } }
 #else
-  for (int i=0;i<8;i++){ if (ins[i]!=0xFF){ pinMode(ins[i], INPUT_PULLDOWN); } }
+  for (int i=0;i<8;i++){ if (ins[i]!=0xFF){ sic_gpio_mode_pulldown(ins[i]); } }
 #endif
   kbd_t* st = (kbd_t*)calloc(1,sizeof *st); if (!st) return NULL;
   struct kscan_s* k = (struct kscan_s*)calloc(1,sizeof *k); if (!k){ free(st); return NULL; }
-  k->impl = st; k->v = &VT; return k;
+  k->impl   = st;
+  k->v      = &VT;
+  k->keymap = cfg ? cfg->keymap : NULL;
+  return k;
 }
 static int probe(const void* icdesc, void** out){
   const sic_board_ic_t* d = (const sic_board_ic_t*)icdesc;
   if (!d || !d->hint) return -1;
   if (strcmp(d->hint,"kbd_74hc138") != 0) return -1;
-  *out = (void*)make();
+  *out = (void*)make((const sic_kscan_cfg_t*)d->cfg);
   return (*out)?0:-1;
 }
 static const sic_driver_t DRV = { .name="kbd_74hc138", .function=SIC_F_KSCAN, .probe=probe, .remove=NULL };

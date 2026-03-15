@@ -1,8 +1,5 @@
 
-> **ALPHA NOTICE (0.3.0‑alpha1):** API and headers may change without notice.
-> Expect breaking changes between alpha releases. Use at your own risk.
-
-# SIC — Simple Interface Components (v0.3.0-rc4)
+# SIC — Simple Interface Components (v1.0.0)
 
 [![Build](https://img.shields.io/badge/build-GitHub%20Actions-inactive)](#)
 [![License](https://img.shields.io/badge/license-WTFPL-blue)](#)

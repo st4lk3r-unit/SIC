@@ -1,13 +1,21 @@
 
-#include <Arduino.h>
 extern "C" {
 #include "sic/power/battery.h"
-#include "sic/sic.h"
 }
 
 #ifndef BAT_ADC_PIN
-#define BAT_ADC_PIN 10
-#endif
+#  ifndef SIC_BATTERY_BQ27220
+/* No ADC pin and no I2C gauge selected — stub returns SIC_ENOENT. */
+int sic_battery_read(sic_battery_t* out){
+  (void)out;
+  return SIC_ENOENT;
+}
+#  endif /* SIC_BATTERY_BQ27220 */
+#else
+
+#if defined(ARDUINO) || defined(SIC_BACKEND_ARDUINO)
+#include <Arduino.h>
+
 #ifndef BAT_DIV_K
 #define BAT_DIV_K 2.0f
 #endif
@@ -20,10 +28,13 @@ static int percent_from_voltage(float v){
 }
 
 int sic_battery_read(sic_battery_t* out){
-  if (!out) return -1;
+  if (!out) return SIC_EINVAL;
   analogReadResolution(12);
   float mv = (float)analogRead(BAT_ADC_PIN) * (3300.0f/4095.0f) * BAT_DIV_K;
   out->voltage_v = mv / 1000.0f;
   out->percent = percent_from_voltage(out->voltage_v);
   return 0;
 }
+#endif /* SIC_BACKEND_ARDUINO */
+
+#endif /* BAT_ADC_PIN */

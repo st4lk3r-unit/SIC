@@ -18,28 +18,33 @@ static int is_modifier_idx(int idx, sic_keycode_t* out_code){
   }
 }
 
-static char base_from_idx(int idx){
-  /* Minimal qwerty-ish map for 4x14; your board-specific keymap may override via a driver */
-  static const char map[4][14] = {
-    { '`','1','2','3','4','5','6','7','8','9','0','-','=', '\b' },
-    { '\t','q','w','e','r','t','y','u','i','o','p','[',']','\\' },
-    {  0 ,  0 ,'a','s','d','f','g','h','j','k','l',';','\'','\n'},
-    {  0 ,  0 , 0 ,'z','x','c','v','b','n','m',',','.','/',' ' }
-  };
-  int row = idx % 4, col = idx / 4;
-  if (row<0||row>3||col<0||col>13) return 0;
-  return map[row][col];
-}
 
 static char shiftify(char c){
   if (c>='a' && c<='z') return (char)(c-'a'+'A');
   switch(c){
-    case '`':'~'; case '1':'!'; case '2':'@'; case '3':'#'; case '4':'$'; case '5':'%';
-    case '6':'^'; case '7':'&'; case '8':'*'; case '9':'('; case '0':')'; case '-':'_';
-    case '=':'+'; case '[':'{'; case ']':'}'; case '\\':'|'; case ';':':'; case '\'':'"';
-    case ',':'<'; case '.':'>'; case '/':'?';
+    case '`': return '~';
+    case '1': return '!';
+    case '2': return '@';
+    case '3': return '#';
+    case '4': return '$';
+    case '5': return '%';
+    case '6': return '^';
+    case '7': return '&';
+    case '8': return '*';
+    case '9': return '(';
+    case '0': return ')';
+    case '-': return '_';
+    case '=': return '+';
+    case '[': return '{';
+    case ']': return '}';
+    case '\\': return '|';
+    case ';': return ':';
+    case '\'': return '"';
+    case ',': return '<';
+    case '.': return '>';
+    case '/': return '?';
+    default:  return c;
   }
-  return c;
 }
 
 int sic_key_poll(sic_key_event_t* ev){
@@ -62,12 +67,12 @@ int sic_key_poll(sic_key_event_t* ev){
   memset(ev, 0, sizeof *ev);
   ev->pressed = (uint8_t)pressed;
 
-  sic_keycode_t mod; 
+  sic_keycode_t mod;
   if (is_modifier_idx(idx, &mod)){ ev->code = mod; ev->ascii = 0; }
   else {
-    char c = base_from_idx(idx);
+    char c = k->keymap ? k->keymap(idx) : 0;
     ev->ascii = c;
-    ev->code  = (c==0)? SIC_KEY_NONE : (sic_keycode_t)c;
+    ev->code  = (c == 0) ? SIC_KEY_NONE : (sic_keycode_t)c;
   }
 
   g_prev = bm;

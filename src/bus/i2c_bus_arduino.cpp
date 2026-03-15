@@ -1,3 +1,4 @@
+#if defined(ARDUINO) || defined(SIC_BACKEND_ARDUINO)
 #include <Arduino.h>
 #include <Wire.h>
 #include "sic/bus/i2c_bus.h"
@@ -27,3 +28,4 @@ int  sic_i2c_writeread(int bus, uint8_t addr, const uint8_t* wr, int nw, uint8_t
   int w = sic_i2c_write(bus, addr, wr, nw); if (w<0) return w;
   return sic_i2c_read(bus, addr, rd, nr);
 }
+#endif /* SIC_BACKEND_ARDUINO */

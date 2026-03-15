@@ -1,7 +1,7 @@
+#pragma once
 #ifndef SIC_NOPIN
 #define SIC_NOPIN 0xFF
 #endif
-#pragma once
 #ifdef __cplusplus
 extern "C" {
 #endif

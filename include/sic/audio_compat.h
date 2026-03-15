@@ -4,15 +4,17 @@
 extern "C" {
 #endif
 
-// Default pins/slot if not provided by build flags
+// MIC_SLOT_RIGHT, SIC_MIC_CLK and SIC_MIC_DATA must be defined by the board
+// header or build flags — there are no generic defaults because correct values
+// are board-specific (e.g. Cardputer: CLK=43, DATA=46).
 #ifndef MIC_SLOT_RIGHT
 #define MIC_SLOT_RIGHT 1
 #endif
-#ifndef SIC_MIC_CLK
-#define SIC_MIC_CLK 43
+#if !defined(SIC_MIC_CLK) && !defined(SIC_AUDIO_NO_COMPAT)
+#  error "SIC_MIC_CLK must be defined (e.g. via build_flags: -DSIC_MIC_CLK=43)"
 #endif
-#ifndef SIC_MIC_DATA
-#define SIC_MIC_DATA 46
+#if !defined(SIC_MIC_DATA) && !defined(SIC_AUDIO_NO_COMPAT)
+#  error "SIC_MIC_DATA must be defined (e.g. via build_flags: -DSIC_MIC_DATA=46)"
 #endif
 
 // Compatibility shims for legacy 2-arg mic API and amp control.
