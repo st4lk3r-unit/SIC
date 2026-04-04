@@ -1,5 +1,6 @@
 
 extern "C" {
+#include "sic/sic.h"
 #include "sic/power/battery.h"
 }
 
