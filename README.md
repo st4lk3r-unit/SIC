@@ -1,10 +1,9 @@
 
-# SIC — Simple Interface Components (v1.0.0)
+# SIC — St4lk3r Itegrated Chips (v1.0.0)
 
-[![Build](https://img.shields.io/badge/build-GitHub%20Actions-inactive)](#)
 [![License](https://img.shields.io/badge/license-WTFPL-blue)](#)
 
-SIC is a **single-include** hardware abstraction layer for ESP32-class boards.
+SIC is a **single-include** hardware abstraction layer for embeded boards.
 Consume via `#include <sic/sic.h>`.
 
 ## ✨ 5‑Minute Quickstart
