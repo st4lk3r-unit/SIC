@@ -1,20 +1,34 @@
 # Troubleshooting
 
-**No serial logs** — match baud rate, avoid long blocking calls in `setup()`.
+**No serial logs on Cardputer / ESP32-S3** — enable USB CDC in the PlatformIO env. Upload can work while `Serial.print()` goes to an unseen UART if these flags are missing:
+
+```ini
+monitor_speed = 115200
+monitor_dtr = 0
+monitor_rts = 0
+build_flags =
+  -DARDUINO_USB_MODE=1
+  -DARDUINO_USB_CDC_ON_BOOT=1
+  -DARDUINO_USB_MSC_ON_BOOT=0
+  -DARDUINO_USB_DFU_ON_BOOT=0
+```
+
+Also print before heavy init. The universal demo prints `[BOOT]` before `sic_begin()` so an early SIC/bus/driver problem is visible instead of looking like a dead monitor.
 
 **Duplicate symbols** — add `-DSIC_DISABLE_DUMMY=1` to disable the dummy fallback drivers.
 
 **Keyboard dead** — check wiring and pull-ups; adjust debounce and scan period in `board_*.c`.
 
-**`hw` shows `mic: none` or `amp: none`** — codec probe never fails; if these show `none` the
-driver is not registered. Check that `-DSIC_DRV_CODEC_ES8311=1` is in `build_flags` and the
-board descriptor includes a `SIC_F_MIC` and `SIC_F_AMP` entry pointing to `"codec_es8311"`.
+**`d` shows `mic: no` or `amp: no`** — the board descriptor or driver registration is missing.
+For Cardputer original/v1.1 this should be `mic_pdm` + `ns4168`; check
+`-DSIC_DRV_MIC_PDM=1`, `-DSIC_DRV_AMP_I2S=1`, and the `SIC_F_MIC` / `SIC_F_AMP` entries in
+`board_cardputer.c`. For ES8311 boards, check `-DSIC_DRV_CODEC_ES8311=1` and entries pointing
+to `"codec_es8311"`.
 
-**`mic: start failed`** — I2S open or ES8311 I2C init failed. Verify:
-- MCLK/BCLK/WS/DOUT/DIN pin numbers match hardware.
-- ES8311 is at I2C address `0x18` (run `i2c` command to scan).
-- `use_apll = false` in `sic_arduino_audio.cpp` (APLL can fail on ESP32-S3).
-- I2S is opened *before* I2C register writes — MCLK must be running for ES8311 to respond.
+**`mic: start failed`** — I2S open or codec init failed. Verify:
+- Cardputer PDM mic pins are DAT=G46 and CLK=G43.
+- ES8311 targets: MCLK/BCLK/WS/DOUT/DIN pin numbers match hardware, `0x18` appears on I2C,
+  `use_apll = false`, and I2S/MCLK starts before ES8311 I2C register writes.
 
 **Mic silent / stuck at max value** — check `REG44` is `0x08` (not `0x58`). Value `0x58`
 enables the DAC2ADC internal loopback, routing playback back into the ADC input.

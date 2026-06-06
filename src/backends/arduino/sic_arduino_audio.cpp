@@ -2,6 +2,8 @@
 #define SIC_AUDIO_NO_COMPAT 1
 #include <Arduino.h>
 #include <driver/i2s.h>
+#include <math.h>
+#include <string.h>
 extern "C" {
   #include "sic/sic.h"    /* includes sic/audio.h */
 }
@@ -32,6 +34,7 @@ static bool g_mic   = false;
 static bool g_codec = false;
 static int  g_spk_sr = 48000;
 static int  g_mic_sr = 16000;
+static int  g_codec_sr = 16000;
 
 /* ── Raw speaker (I2S_NUM_1, no MCLK, simple DAC/amp) ─────────────────────── */
 
@@ -94,9 +97,16 @@ void sic_spk_close(void) {
     g_spk = false;
 }
 
-/* Generate and play a 1kHz sine tone for `ms` milliseconds via sic_spk_*. */
+/* Generate and play a 1kHz sine tone for `ms` milliseconds via sic_spk_*.
+ *
+ * Important: close the I2S speaker path after pushing a short zero tail.  Some
+ * I2S amp paths keep reproducing whatever is still in DMA/shift registers if
+ * the driver is left open after a finite tone, which feels like a stuck beep.
+ */
 int sic_spk_beep_1khz_ms(unsigned ms) {
     if (g_mic) { i2s_driver_uninstall(I2S_NUM_0); g_mic = false; }
+    if (ms == 0) ms = 1;
+
     if (sic_spk_open(
             #ifdef SIC_SPK_BCLK
               SIC_SPK_BCLK,
@@ -117,14 +127,28 @@ int sic_spk_beep_1khz_ms(unsigned ms) {
 
     const size_t N = 512;
     static int16_t buf[N];
-    float    w     = 2.0f * PI * 1000.0f / (float)g_spk_sr;
+    const float w = 2.0f * PI * 1000.0f / (float)g_spk_sr;
     uint32_t total = (uint32_t)((uint64_t)g_spk_sr * ms / 1000);
+    uint32_t phase = 0;
+
     while (total) {
         size_t n = total > N ? N : total;
-        for (size_t i = 0; i < n; i++) buf[i] = (int16_t)(sinf(w * i) * 12000);
+        for (size_t i = 0; i < n; i++) {
+            buf[i] = (int16_t)(sinf(w * (float)phase++) * 12000.0f);
+        }
         sic_spk_write(buf, n);
         total -= n;
     }
+
+    /* Drain with silence, then tear the bus down so the beep really stops. */
+    memset(buf, 0, sizeof(buf));
+    uint32_t zero_frames = (uint32_t)(g_spk_sr / 20); /* 50 ms */
+    while (zero_frames) {
+        size_t n = zero_frames > N ? N : zero_frames;
+        sic_spk_write(buf, n);
+        zero_frames -= n;
+    }
+    sic_spk_close();
     return 0;
 }
 
@@ -182,7 +206,9 @@ void sic_mic_close(void) {
 /* ── Full-duplex I2S codec (I2S_NUM_0, TX+RX+MCLK — e.g. ES8311) ─────────── */
 
 int sic_codec_open(int mclk_pin, int bclk_pin, int ws_pin, int dout_pin, int din_pin, int sample_rate_hz) {
-    if (g_codec) return 0;
+    if (sample_rate_hz <= 0) sample_rate_hz = 16000;
+    if (g_codec && g_codec_sr == sample_rate_hz) return 0;
+    if (g_codec) { i2s_driver_uninstall(I2S_NUM_0); g_codec = false; }
     /* Codec and PDM mic share I2S_NUM_0 — reinstall with the new config. */
     if (g_mic) { i2s_driver_uninstall(I2S_NUM_0); g_mic = false; }
 
@@ -200,7 +226,7 @@ int sic_codec_open(int mclk_pin, int bclk_pin, int ws_pin, int dout_pin, int din
     if (i2s_driver_install(I2S_NUM_0, &cfg, 0, nullptr) != ESP_OK) return -1;
 
     i2s_pin_config_t pins = {};
-    pins.mck_io_num   = mclk_pin;
+    pins.mck_io_num   = (mclk_pin >= 0) ? mclk_pin : I2S_PIN_NO_CHANGE;
     pins.bck_io_num   = bclk_pin;
     pins.ws_io_num    = ws_pin;
     pins.data_out_num = dout_pin;
@@ -212,16 +238,34 @@ int sic_codec_open(int mclk_pin, int bclk_pin, int ws_pin, int dout_pin, int din
     }
     i2s_set_clk(I2S_NUM_0, sample_rate_hz, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
     g_codec = true;
+    g_codec_sr = sample_rate_hz;
     return 0;
 }
 
-/* Returns frames read. On I2S error `got` stays 0, so return value is 0. */
+/* Return mono frames read from a stereo I2S codec. The hardware stream is
+ * L/R interleaved; SIC's mic abstraction must not leak that detail, so this
+ * downmixes to mono before returning to callers.
+ */
 int sic_codec_read(int16_t* buf, int n, int timeout_ms) {
     if (!g_codec || !buf || n <= 0) return 0;
-    size_t got = 0;
-    i2s_read(I2S_NUM_0, buf, (size_t)n * sizeof(int16_t),
-             &got, timeout_ms / portTICK_PERIOD_MS);
-    return (int)(got / sizeof(int16_t));
+    static int16_t stereo[512 * 2];
+    int frames = 0;
+    while (frames < n) {
+        int want = (n - frames) > 512 ? 512 : (n - frames);
+        size_t got = 0;
+        if (i2s_read(I2S_NUM_0, stereo, (size_t)want * 2 * sizeof(int16_t),
+                     &got, timeout_ms / portTICK_PERIOD_MS) != ESP_OK) break;
+        int got_frames = (int)(got / (2 * sizeof(int16_t)));
+        if (got_frames <= 0) break;
+        for (int i = 0; i < got_frames; ++i) {
+            int32_t l = stereo[2 * i];
+            int32_t r = stereo[2 * i + 1];
+            buf[frames + i] = (int16_t)((l + r) / 2);
+        }
+        frames += got_frames;
+        if (got_frames < want) break;
+    }
+    return frames;
 }
 
 /* Upmix mono to stereo and write to codec TX. Returns frames written. */

@@ -23,10 +23,10 @@ static const struct mic_vtbl_s MICVT = { mic_start, mic_read };
 static mic_t MIC = { &MICVT, NULL };
 
 static void amp_enable(const void* self, int on){ (void)self;(void)on; }
-static const struct amp_vtbl_s AMPVT = { amp_enable };
+static const struct amp_vtbl_s AMPVT = { amp_enable, NULL, NULL };
 static amp_t AMP = { &AMPVT, NULL };
 
-static void ir_send(const void* self, unsigned long code){ (void)self;(void)code; }
+static int ir_send(const void* self, uint32_t code){ (void)self;(void)code; return 0; }
 static const struct ir_vtbl_s IRVT = { ir_send };
 static ir_t IR = { &IRVT, NULL };
 

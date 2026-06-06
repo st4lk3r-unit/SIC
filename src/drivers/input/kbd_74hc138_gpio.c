@@ -6,18 +6,35 @@
 #include "sic/sic_board.h"
 #include "sic/sic_registry.h"
 #include "sic/bus/delay.h"
+#include "sic/log.h"
 
 #ifndef KBD_SEL0
-#define KBD_SEL0 0xFF
+#  ifdef KBD_A0
+#    define KBD_SEL0 KBD_A0
+#  else
+#    define KBD_SEL0 0xFF
+#  endif
 #endif
 #ifndef KBD_SEL1
-#define KBD_SEL1 0xFF
+#  ifdef KBD_A1
+#    define KBD_SEL1 KBD_A1
+#  else
+#    define KBD_SEL1 0xFF
+#  endif
 #endif
 #ifndef KBD_SEL2
-#define KBD_SEL2 0xFF
+#  ifdef KBD_A2
+#    define KBD_SEL2 KBD_A2
+#  else
+#    define KBD_SEL2 0xFF
+#  endif
 #endif
 #ifndef KBD_EN_N
-#define KBD_EN_N 0xFF
+#  ifdef KBD_EN
+#    define KBD_EN_N KBD_EN
+#  else
+#    define KBD_EN_N 0xFF
+#  endif
 #endif
 
 #ifndef KBD_IN0
@@ -48,8 +65,20 @@
 #ifndef KBD_ACTIVE_LOW
 #define KBD_ACTIVE_LOW 1
 #endif
+#ifndef SIC_KBD_PULL_UP
+#define SIC_KBD_PULL_UP 1
+#endif
+#ifndef SIC_KBD_PULL_DOWN
+#define SIC_KBD_PULL_DOWN 2
+#endif
+#ifndef UP
+#define UP SIC_KBD_PULL_UP
+#endif
+#ifndef DOWN
+#define DOWN SIC_KBD_PULL_DOWN
+#endif
 #ifndef KBD_PULL
-#define KBD_PULL UP
+#define KBD_PULL SIC_KBD_PULL_UP
 #endif
 #ifndef KBD_DEBOUNCE_MS
 #define KBD_DEBOUNCE_MS 20
@@ -67,7 +96,7 @@
 #define KBD_INPUT_SWAP_56 0
 #endif
 #ifndef KBD_FORCE_ONEHOT
-#define KBD_FORCE_ONEHOT 1
+#define KBD_FORCE_ONEHOT 0
 #endif
 #ifndef KBD_IN_PERM
 #define KBD_IN_PERM {0,1,2,3,4,5,6}
@@ -88,9 +117,30 @@ static inline int is_pressed(int v){
 #endif
 }
 
+typedef struct { uint8_t init_done; } kbd_t;
+
+static int kbd_hw_init(kbd_t* st){
+  if (!st) return -1;
+  if (st->init_done) return 0;
+  if (KBD_SEL0==0xFF || KBD_SEL1==0xFF || KBD_SEL2==0xFF) return -1;
+  sic_gpio_mode(KBD_SEL0, 1);
+  sic_gpio_mode(KBD_SEL1, 1);
+  sic_gpio_mode(KBD_SEL2, 1);
+  set_sel(0);
+  if (KBD_EN_N!=0xFF){ sic_gpio_mode(KBD_EN_N, 1); sic_gpio_write(KBD_EN_N, 0); }
+#if (KBD_PULL==UP)
+  for (int i=0;i<8;i++){ if (ins[i]!=0xFF){ sic_gpio_mode_pullup(ins[i]); } }
+#else
+  for (int i=0;i<8;i++){ if (ins[i]!=0xFF){ sic_gpio_mode_pulldown(ins[i]); } }
+#endif
+  st->init_done = 1;
+  return 0;
+}
+
 static int read_bitmap_impl(const struct kscan_s* self, unsigned long long* out_bitmap){
-  (void)self;
-  if (!out_bitmap) return -1;
+  if (!self || !out_bitmap) return -1;
+  kbd_t* st = (kbd_t*)self->impl;
+  if (kbd_hw_init(st) < 0) return -1;
   unsigned long long bm = 0ULL;
 
   static const uint8_t x1[7] = { 0, 2, 4, 6,  8, 10, 12 };
@@ -121,7 +171,7 @@ static int read_bitmap_impl(const struct kscan_s* self, unsigned long long* out_
     if (mask) mask &= (uint8_t)(- (int8_t)mask);
 #endif
 #if KBD_DIAG
-    if (rawmask) { Serial.printf("[KBD] i=%d raw=0x%02X mask=0x%02X\n", i, rawmask, mask); }
+    if (rawmask) { SIC_LOG(SIC_LOG_DBG, "[KBD] i=%d raw=0x%02X mask=0x%02X", i, rawmask, mask); }
 #endif
     if (!mask) continue;
 
@@ -142,7 +192,6 @@ static int read_bitmap_impl(const struct kscan_s* self, unsigned long long* out_
   return 0;
 }
 
-typedef struct { int reserved; } kbd_t;
 static int read_key_impl(const void* self_void){
   (void)self_void;
   // Legacy single-key read not used in HAL; return -1 to avoid double-read
@@ -154,22 +203,25 @@ static const struct kscan_vtbl_s VT = {
 };
 
 static const struct kscan_s* make(const sic_kscan_cfg_t* cfg){
-  if (KBD_SEL0==0xFF || KBD_SEL1==0xFF || KBD_SEL2==0xFF) return NULL;
-  sic_gpio_mode(KBD_SEL0, 1);
-  sic_gpio_mode(KBD_SEL1, 1);
-  sic_gpio_mode(KBD_SEL2, 1);
-  set_sel(0);
-  if (KBD_EN_N!=0xFF){ sic_gpio_mode(KBD_EN_N, 1); sic_gpio_write(KBD_EN_N, 0); }
-#if (KBD_PULL==UP)
-  for (int i=0;i<8;i++){ if (ins[i]!=0xFF){ sic_gpio_mode_pullup(ins[i]); } }
-#else
-  for (int i=0;i<8;i++){ if (ins[i]!=0xFF){ sic_gpio_mode_pulldown(ins[i]); } }
-#endif
   kbd_t* st = (kbd_t*)calloc(1,sizeof *st); if (!st) return NULL;
   struct kscan_s* k = (struct kscan_s*)calloc(1,sizeof *k); if (!k){ free(st); return NULL; }
-  k->impl   = st;
-  k->v      = &VT;
-  k->keymap = cfg ? cfg->keymap : NULL;
+  k->impl          = st;
+  k->v             = &VT;
+  k->keymap        = cfg ? cfg->keymap        : NULL;
+  k->keymap_alt    = cfg ? cfg->keymap_alt    : NULL;
+  k->keymap_fn     = cfg ? cfg->keymap_fn     : NULL;
+  k->keycode       = cfg ? cfg->keycode       : NULL;
+  k->keycode_alt   = cfg ? cfg->keycode_alt   : NULL;
+  k->keycode_fn    = cfg ? cfg->keycode_fn    : NULL;
+  k->modifier_mask = cfg ? cfg->modifier_mask : 0;
+  k->shift_mask    = cfg ? cfg->shift_mask    : 0;
+  k->ctrl_mask     = cfg ? cfg->ctrl_mask     : 0;
+  k->opt_mask      = cfg ? cfg->opt_mask      : 0;
+  k->fn_mask       = cfg ? cfg->fn_mask       : 0;
+  k->caps_mask     = cfg ? cfg->caps_mask     : 0;
+  k->scan_to_index = cfg ? cfg->scan_to_index : NULL;
+  k->rows          = cfg ? cfg->rows          : 0;
+  k->cols          = cfg ? cfg->cols          : 0;
   return k;
 }
 static int probe(const void* icdesc, void** out){

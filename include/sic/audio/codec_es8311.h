@@ -16,6 +16,13 @@ typedef struct sic_es8311_cfg_s {
     int     pin_ws;     /* WS / LRCK GPIO                       */
     int     pin_dout;   /* DOUT GPIO (DAC out → speaker)        */
     int     pin_din;    /* DIN  GPIO (ADC in  ← mic)            */
+
+    /* Some boards, notably Cardputer-ADV, do not route ES8311 MCLK to
+     * the ESP32-S3.  ES8311 can derive its internal master clock from
+     * BCLK/SCLK instead.  Set this to 1 for those boards.  Leaving it
+     * zero preserves the older external-MCLK path used by T-Pager.
+     */
+    uint8_t clock_from_bclk;
 } sic_es8311_cfg_t;
 
 #ifdef __cplusplus

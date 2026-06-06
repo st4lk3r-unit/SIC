@@ -21,7 +21,7 @@ Source: LilyGoLib hardware docs + official LILYGO wiki
 | Signal | GPIO | Notes |
 |--------|------|-------|
 | Display ST7796 CS | 38 | DC=37, BL=42 |
-| SD Card CS | 21 | SD detect via XL9555 GPIO12 |
+| SD Card CS | 21 | SD power via XL9555 GPIO14, detect via XL9555 GPIO12 |
 | LoRa CS | 36 | RST=47, BUSY=48, IRQ=14 |
 | NFC CS | 39 | ST25R3916, IRQ=5 |
 
@@ -73,6 +73,8 @@ Source: LilyGoLib hardware docs + official LILYGO wiki
 -DES8311_WS_PIN=18
 -DES8311_DOUT_PIN=45
 -DES8311_DIN_PIN=17
+-DSIC_DRV_BQ25896=1
+-DSIC_DRV_SD_SPI=1
 ```
 
 ## Notes
@@ -80,7 +82,9 @@ Source: LilyGoLib hardware docs + official LILYGO wiki
 - **No raw battery ADC pin** — all battery data via BQ27220 over I2C.
   `sic_battery_read()` requires `-DSIC_BATTERY_BQ27220=1`.
 - **No direct keyboard GPIOs** — TCA8418 handles the full matrix scan internally.
-- **Keyboard power enable** and **keyboard reset** are routed through XL9555 GPIO expander,
+- **Keyboard power enable**, **keyboard reset**, **speaker amp enable**, and **SD power** are routed through the XL9555 GPIO expander,
   not directly accessible as ESP32 GPIOs.
+- T-Pager SD must be powered before mount. SIC's `sd_spi` config enables XL9555 GPIO14, waits for the socket to settle,
+  and starts at a conservative SPI clock before faster retries.
 - `tpager_keymap.c` key layout is provisional — verify each key code against hardware
   before relying on it in production.

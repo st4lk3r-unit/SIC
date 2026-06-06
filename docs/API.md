@@ -18,15 +18,45 @@ Boards are declared in `src/boards/` and selected via build flags (e.g. `-DSIC_T
 
 ## Keyboard
 
+High-level applications should use `sic_key_poll()`. It returns abstract key
+events with portable keycodes, printable ASCII, and modifier flags. The caller
+never needs to know whether the board uses a GPIO matrix, TCA8418, or another
+scanner.
+
+```c
+#include <sic/sic.h>
+
+sic_key_event_t ev;
+if (sic_key_poll(&ev) > 0 && ev.pressed) {
+    if (ev.ascii) {
+        /* printable input */
+    } else if (ev.code == SIC_KEY_LEFT) {
+        /* navigation */
+    }
+}
+```
+
+`ev.shift`, `ev.ctrl`, `ev.alt`, `ev.opt`, `ev.fn`, and `ev.caps` describe the
+logical modifier state after the event. Shift affects symbols and letters; Caps
+affects letters only; Ctrl can emit console control bytes such as Ctrl-C while
+still exposing `ev.ctrl`. `ev.code` uses `sic_keycode_t`, including navigation
+keys, Delete, Escape, F1..F12, and modifier key press/release events.
+
+Low-level keyboard drivers expose a normalized bitmap through `kscan_t`:
+
 ```c
 #include <sic/input/kscan.h>
 
-const kscan_t* sic_kbd(int index);
-
-/* kscan vtable */
-kbd->v->scan(kbd);                          /* update internal bitmap */
-uint64_t bm = kbd->v->bitmap(kbd, row);     /* bitmask of pressed keys in row */
+const kscan_t* kbd = sic_kbd(0);
+uint64_t bm = 0;
+if (kbd && kscan_read_bitmap(kbd, &bm) == 0) {
+    /* bit N = logical key index N is currently down */
+}
 ```
+
+Use the bitmap path only for board bring-up or diagnostics. Board configs map
+hardware scan codes to logical indices via `scan_to_index`, then map logical
+indices to ASCII/keycodes with `keymap*` and `keycode*` callbacks.
 
 ---
 
@@ -127,3 +157,42 @@ int  sic_gpio_read       (int pin);
 ```c
 void sic_delay_ms(int ms);
 ```
+
+For direct I2S amp paths such as Cardputer/NS4168, the amp driver may also
+provide portable playback hooks:
+
+```c
+int rc = amp->v->play_mono(amp, pcm16, frames, 16000);
+int rc = amp->v->beep_ms(amp, 2000);
+```
+
+Prefer these hooks from examples/apps because they keep board speaker pins in
+the SIC board backend instead of leaking them into application code.
+
+---
+
+## IR TX
+
+```c
+#include <sic/sic.h>
+
+int rc = sic_ir_send_nec(0x00FF00FFu); /* 0 = sent */
+```
+
+Boards expose `SIC_CAP_IR_TX` only when a real IR driver is registered.
+Cardputer uses GPIO44 with a 38 kHz NEC bitbang driver.
+
+---
+
+## SD Storage
+
+```c
+#include <sic/storage/sd.h>
+
+const sd_t* sd = sic_sd(0);
+int present = sd && sd->v && sd->v->present(sd);
+uint64_t bytes = sd->v->card_size_bytes(sd);
+```
+
+`SIC_CAP_SD` means the selected board has an SD backend. `present()` means an SD
+card is inserted and the backend could mount/probe it.

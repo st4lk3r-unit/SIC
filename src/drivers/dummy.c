@@ -12,7 +12,7 @@
 static int  kbd_rk (const void* self){ (void)self; return -1; }
 static int  kbd_rb (const struct kscan_s* self, unsigned long long* out){ (void)self; *out=0; return 0; }
 static const struct kscan_vtbl_s KBDVT = { kbd_rk, kbd_rb };
-static kscan_t KBD = { &KBDVT, NULL, NULL };
+static kscan_t KBD = { .v = &KBDVT, .impl = NULL, .keymap = NULL };
 
 static void sw_set(const void* self, int on){ (void)self;(void)on; }
 static int  sw_pg (const void* self){ (void)self; return 1; }
@@ -29,10 +29,10 @@ static const struct mic_vtbl_s MICVT = { mic_start, mic_read };
 static mic_t MIC = { &MICVT, NULL };
 
 static void amp_enable(const void* self, int on){ (void)self;(void)on; }
-static const struct amp_vtbl_s AMPVT = { amp_enable };
+static const struct amp_vtbl_s AMPVT = { amp_enable, NULL, NULL };
 static amp_t AMP = { &AMPVT, NULL };
 
-static void ir_send(const void* self, unsigned long code){ (void)self;(void)code; }
+static int ir_send(const void* self, uint32_t code){ (void)self;(void)code; return 0; }
 static const struct ir_vtbl_s IRVT = { ir_send };
 static ir_t IR = { &IRVT, NULL };
 

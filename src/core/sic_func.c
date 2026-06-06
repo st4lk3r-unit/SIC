@@ -11,6 +11,7 @@ const char* sic_func_name(sic_func_id_t id){
     case SIC_F_CHARGER: return "charger";
     case SIC_F_IR_TX: return "ir_tx";
     case SIC_F_SD: return "sd";
+    case SIC_F_ENCODER: return "encoder";
     default: return "?";
   }
 }
@@ -24,5 +25,6 @@ sic_func_id_t sic_func_id_from_name(const char* s){
   if (0==strcmp(s,"charger")) return SIC_F_CHARGER;
   if (0==strcmp(s,"ir_tx")) return SIC_F_IR_TX;
   if (0==strcmp(s,"sd")) return SIC_F_SD;
+  if (0==strcmp(s,"encoder")) return SIC_F_ENCODER;
   return SIC_F__COUNT;
 }

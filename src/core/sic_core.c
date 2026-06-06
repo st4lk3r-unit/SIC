@@ -3,7 +3,7 @@
  *
  * No Arduino / ESP-IDF / platform headers here.
  * Platform-specific implementations (sic_sysinfo, GPIO, I2C, delay) live in
- * src/backends/<platform>/ and src/bus/*_<backend>.c.
+ * src/backends/<platform>/ and backend-specific src/bus files.
  */
 
 /* Suppress audio compat shim — not needed in the agnostic core. */
@@ -28,13 +28,13 @@ static int g_cap_present[SIC_CAP_COUNT] = {0};
 static int g_cap_counts[SIC_CAP_COUNT]  = {0};
 
 static void refresh_caps(void) {
-    g_cap_counts[SIC_CAP_PWR_SW]    = (sic_pwr_sw(0)   != NULL);
-    g_cap_counts[SIC_CAP_AUDIO_AMP] = (sic_amp(0)      != NULL);
-    g_cap_counts[SIC_CAP_MIC]       = (sic_mic(0)      != NULL);
-    g_cap_counts[SIC_CAP_CHARGER]   = (sic_charger(0)  != NULL);
-    g_cap_counts[SIC_CAP_KSCAN]     = (sic_kbd(0)      != NULL);
-    g_cap_counts[SIC_CAP_IR_TX]     = (sic_ir_tx(0)    != NULL);
-    g_cap_counts[SIC_CAP_SD]        = (sic_sd(0)       != NULL);
+    g_cap_counts[SIC_CAP_PWR_SW]    = sic_count_fn(SIC_F_PWR_SW);
+    g_cap_counts[SIC_CAP_AUDIO_AMP] = sic_count_fn(SIC_F_AMP);
+    g_cap_counts[SIC_CAP_MIC]       = sic_count_fn(SIC_F_MIC);
+    g_cap_counts[SIC_CAP_CHARGER]   = sic_count_fn(SIC_F_CHARGER);
+    g_cap_counts[SIC_CAP_KSCAN]     = sic_count_fn(SIC_F_KSCAN);
+    g_cap_counts[SIC_CAP_IR_TX]     = sic_count_fn(SIC_F_IR_TX);
+    g_cap_counts[SIC_CAP_SD]        = sic_count_fn(SIC_F_SD);
     for (int i = 0; i < SIC_CAP_COUNT; i++)
         g_cap_present[i] = g_cap_counts[i] > 0;
 }
@@ -42,6 +42,21 @@ static void refresh_caps(void) {
 /* ── Lifecycle ────────────────────────────────────────────────────────── */
 
 int sic_begin(const void* board_desc, const sic_begin_opts_t* opts) {
+    /*
+     * Application examples should not need Wire.begin()/i2c_driver_install().
+     * If the target provided bus pins, initialise bus 0 before board preinit so
+     * boards may release GPIO expanders, keyboard controllers, codecs, etc.
+     */
+    if (!opts || opts->init_buses) {
+#if defined(I2C_SDA_PIN) && defined(I2C_SCL_PIN)
+#  if defined(I2C_HZ)
+        sic_i2c_begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_HZ);
+#  else
+        sic_i2c_begin(I2C_SDA_PIN, I2C_SCL_PIN, 400000u);
+#  endif
+#endif
+    }
+
     int rc = sic_begin_legacy((const sic_board_t*)board_desc, opts);
     refresh_caps();
     return rc;
@@ -64,11 +79,15 @@ int sic_count_cap(sic_cap_t cap) {
 int sic_ir_send_nec(uint32_t code) {
     const ir_t* ir = sic_ir_tx(0);
     if (!ir || !ir->v || !ir->v->send_nec) return -1;
-    ir->v->send_nec(ir, code);
-    return 0;
+    return ir->v->send_nec(ir, code);
 }
 
-int sic_sd_present(void) { return sic_sd(0) != NULL; }
+int sic_sd_present(void) {
+    const sd_t* sd = sic_sd(0);
+    if (!sd) return 0;
+    if (sd->v && sd->v->present) return sd->v->present(sd);
+    return 1;
+}
 
 int sic_i2c_begin(int sda, int scl, uint32_t hz) {
     return sic_i2c_begin_bus(0, sda, scl, hz);
